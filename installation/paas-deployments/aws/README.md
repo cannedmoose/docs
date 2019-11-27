@@ -23,7 +23,7 @@ This guide covers the following:
 #### In AWS Services, go to **EC2**, **Instances**, and **Launch Instance**
 
 1. Choose an AMI
-    - Select **Ubuntu Server 14.04 LTS** AMI
+    - Select **Ubuntu Server 18.04 LTS** AMI
 2. Choose an Instance Type
     - Select Type: **t2.micro** and click **Next**
 3. Configure Instance Details
@@ -94,61 +94,69 @@ _Note: Second (or more) domain is optional._
 ### 5. Configure Nginx web server with TLS/SSL
 
 1. Install Nginx web server.
+
     `sudo apt-get install nginx`
+
 2. Edit the Nginx configuration file.
     - Backup the default config file for reference:
     `cd /etc/nginx/sites-available`
     `sudo mv default default.reference`
     - Create a new file with the following contents. Replace `ABC.DOMAIN.COM` with your domain (it appears 4 times below). Make sure to update it in the path to your key files as well.
 
-   `sudo nano /etc/nginx/sites-available/default`
+    `sudo nano /etc/nginx/sites-available/default`
 
 ```bash
+# Listen for https traffic
 server {
-listen 443 ssl;
-server_name <ABC.DOMAIN.COM>;
-ssl_certificate /etc/letsencrypt/live/<ABC.DOMAIN.COM>/fullchain.pem;
-ssl_certificate_key /etc/letsencrypt/live/<ABC.DOMAIN.COM>/privkey.pem;
-ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-ssl_prefer_server_ciphers on;
-ssl_ciphers 'EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH';
-root /usr/share/nginx/html;
-index index.html index.htm;
-# Make site accessible from http://localhost/
-server_name localhost;
-location / {
-    proxy_pass http://localhost:3000/;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host $http_host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forward-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forward-Proto http;
-    proxy_set_header X-Nginx-Proxy true;
-    proxy_redirect off;
+    listen 443 ssl;
+    server_name <ABC.DOMAIN.COM>;
+    ssl_certificate /etc/letsencrypt/live/<ABC.DOMAIN.COM>/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/<ABC.DOMAIN.COM>/privkey.pem;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers 'EECDH+AESGCM:EDH+AESGCM:AES256+EECDH:AES256+EDH';
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+    # Make site accessible from http://localhost/
+    server_name localhost;
+    location / {
+        proxy_pass http://localhost:3000/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forward-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forward-Proto http;
+        proxy_set_header X-Nginx-Proxy true;
+        proxy_redirect off;
+    }
 }
-}
+# Redirect port http traffic to https
 server {
-listen 80;
-server_name <ABC.DOMAIN.COM>;
-return 301 https://$host$request_uri;
+    listen 80;
+    server_name <ABC.DOMAIN.COM>;
+    return 301 https://$host$request_uri;
 }
 ```
 
-```
-- Explanation: remove the listen to port 80 by default and replace with port 443 ssl as well as giving the path to the certificate. Restrict to certain SSL protocols and ciphers (you may add more if you like). In the location section, use Nginx as a proxy to forward to port 3000 (where Rocket.Chat is set up. Create a second server block listening on port 80 that will redirect to https."
-- Write & exit
-- Stop Nginx:
+ - Write and Exit
+ 
+3. Stop Nginx
+
 `sudo service nginx stop`
-- Test starting Nginx to make sure there are no syntax errors in your configuration file. If there are errors in your file, it will give you a clue as to the issue.
+
+4. Test starting Nginx to make sure there are no syntax errors in your configuration file. If there are errors in your file, it will give you a clue as to the issue.
+
 `sudo nginx -t`
-- If the syntax test is successful, Start Nginx:
+
+5. If the syntax test is successful, Start Nginx:
+
 `sudo service nginx start`
-- Confirm that it is running properly by opening a web browser and going to your domain name. You will get a page stating **502 Bad Gateway** This is expected. Look above, next to the domain name, you should see a lock icon. If you click this, you should be able to see the certificates, where your browser will verify that Let's Encrypt Authority X1 issued this website's certificate, as well as a report of which cipher is being used.
-- Note: The certificate will expire in 90 days
-- ** TODO: Add script for auto-renewal of certificate.
-```
+
+ - Confirm that it is running properly by opening a web browser and going to your domain name. You will get a page stating **502 Bad Gateway** This is expected. Look above, next to the domain name, you should see a lock icon. If you click this, you should be able to see the certificates, where your browser will verify that Let's Encrypt Authority X1 issued this website's certificate, as well as a report of which cipher is being used.
+
+6. ** TODO: Add script for auto-renewal of certificate. ** Note the certificate will expire in 90 days
 
 ### 6. Install Docker & Docker Compose
 
@@ -228,9 +236,12 @@ Description=MongoDB for Rocket.Chat
 [Service]
 User=root
 WorkingDirectory=/var/www/rocket.chat
-ExecStart=/usr/local/bin/docker-compose up db
+ExecStart=/usr/local/bin/docker-compose up mongo
 Restart=on-failure
 RestartSec=120s
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 - Save and Exit.
@@ -249,6 +260,9 @@ WorkingDirectory=/var/www/rocket.chat
 ExecStart=/usr/local/bin/docker-compose up rocketchat
 Restart=on-failure
 RestartSec=120s
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 Now we need to make systemd aware of these files:
